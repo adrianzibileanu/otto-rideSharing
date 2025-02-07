@@ -40,13 +40,14 @@ class _MapScreenState extends State<MapScreen> {
 
 
 
-String getProfileImageUrl(String? imagePath) {
-  if (imagePath == null || imagePath.isEmpty) {
+
+String getProfileImageUrl(String? userId, String? imagePath) {
+  if (imagePath == null || imagePath.isEmpty || userId == null || userId.isEmpty) {
     return ""; // Return empty string if no image
   }
 
-  // Ensure proper full URL format
-  return "$pb/api/files/_pb_users_auth_/$imagePath";
+  // ✅ Construct the correct URL based on PocketBase file storage
+  return "$pb/api/files/_pb_users_auth_/$userId/$imagePath";
 }
 
 
@@ -213,7 +214,7 @@ void _showDriverInfoSheet() {
             ListTile(
               leading: CircleAvatar(
                 backgroundImage: assignedDriver?['profile_picture'] != null && assignedDriver?['profile_picture'].isNotEmpty
-                    ? NetworkImage((getProfileImageUrl(assignedDriver?['profile_picture'])))
+                    ? NetworkImage(getProfileImageUrl(assignedDriver?['id'], assignedDriver?['profile_picture']))
                     : null,
                 child: assignedDriver?['profile_picture'] == null ? const Icon(Icons.person) : null,
               ),
