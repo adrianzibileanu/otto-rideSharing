@@ -30,7 +30,8 @@ class _MapScreenState extends State<MapScreen> {
   bool isDriverAssigned = false;
   bool isSheetExpanded = false;
   String? rideStatus;
-  String pb = "https://wide-ends-rule.loca.lt";
+  String pb = "https://wild-kiwis-kneel.loca.lt";
+  bool isDataLoaded = false; // ✅ Prevent UI rendering until data is ready
 
   @override
   void initState() {
@@ -202,7 +203,7 @@ LatLng _parseLocation(dynamic locationData) {
 void _showDriverInfoSheet() {
   if (assignedDriver == null || driverVehicle == null) return;
 
-  showModalBottomSheet(
+ /* showModalBottomSheet(
     context: context,
     isDismissible: false, // Prevent dismissing
     builder: (context) {
@@ -233,7 +234,7 @@ void _showDriverInfoSheet() {
         ),
       );
     },
-  );
+  );*/
 }
 
 
@@ -269,7 +270,53 @@ void _listenForDriverAssignment() {
   
 }
 
+void _restoreRideState() async {
+  print("📡 Attempting to restore last ride state...");
 
+  String userId = widget.userData["record"]["id"];
+  Map<String, dynamic>? rideData = await PocketBaseService().fetchLatestOngoingRide(userId);
+
+  if (rideData != null) {
+    print("🔄 Ride Data Received: $rideData");
+
+    setState(() {
+      rideId = rideData['id'];
+      isDriverAssigned = rideData['status'] == 'accepted' || rideData['status'] == 'in_progress';
+      isWaitingForDriver = rideData['status'] == 'requested';
+      assignedDriver = rideData['driver'];
+      driverVehicle = rideData['vehicle'];
+      driverETA = rideData['eta'];
+       // ✅ Restore pickup and dropoff locations
+      if (rideData.containsKey('pickup_location') && rideData['pickup_location'] != null) {
+        pickupLocation = _parseLocation(rideData['pickup_location']);
+      }
+
+      if (rideData.containsKey('dropoff_location') && rideData['dropoff_location'] != null) {
+        dropoffLocation = _parseLocation(rideData['dropoff_location']);
+      }
+    });
+
+    print("✅ Ride state restored successfully.");
+  } else {
+    print("🚫 No active ride found, resetting UI.");
+    if (!mounted) return; // ✅ 
+    setState(() {
+      rideId = null;
+      isDriverAssigned = false;
+      isWaitingForDriver = false;
+      assignedDriver = null;
+      driverVehicle = null;
+      driverETA = null;
+    });
+  }
+
+  // ✅ Now that all data is loaded, allow UI to render
+  setState(() {
+    isDataLoaded = true;
+  });
+}
+
+/*
 void _restoreRideState() async {
   print("📡 Attempting to restore last ride state...");
 
@@ -339,25 +386,7 @@ double eta = await PocketBaseService().calculateETA(
         pickupLat: rideData["pickup_location"]["latitude"],
         pickupLng: rideData["pickup_location"]["longitude"],
       );
-
-  //  if (rideData.containsKey('eta')) {
-  //print("📡 Raw ETA value from server: ${rideData['eta']}");
-
- // if (rideData['eta'] is String) {
-    driverETA = eta;//double.tryParse(rideData['eta']);=
-//  } else if (rideData['eta'] is num) {
-////    driverETA = eta;//(rideData['eta'] as num).toDouble();
- // } else {
- //   print("⚠️ Unexpected ETA format: ${eta}");
- // }
-
-  
-
- /// print("✅ Parsed ETA: $driverETA");
-//} else {
-  //print("🚨 No ETA found in ride data!");
-//}
-
+    driverETA = eta;
     if (isDriverAssigned) {
       print("✅ Ride has a driver! Showing driver info...");
       _showDriverInfoSheet();
@@ -376,6 +405,7 @@ double eta = await PocketBaseService().calculateETA(
     });
   }
 }
+*/
 
 /// ✅ Warn Before Leaving If Ride is Still Requested
 /// ✅ Warn Before Leaving If Ride is Still Requested
@@ -526,7 +556,7 @@ void _cancelRideRequest() async {
     ),
 
     /// ✅ Confirm Ride Button (Remains as before)
-    if (showConfirmButton && !isDriverAssigned && assignedDriver == null)
+    if (isDataLoaded && showConfirmButton && !isDriverAssigned && assignedDriver == null)
       Positioned(
         bottom: 50,
         left: 20,
@@ -613,7 +643,7 @@ void _cancelRideRequest() async {
                   ListTile(
                     leading: CircleAvatar(
                       backgroundImage: assignedDriver?['profile_picture'] != null && assignedDriver?['profile_picture'].isNotEmpty
-                          ? NetworkImage(assignedDriver?['profile_picture'])
+                          ? NetworkImage(getProfileImageUrl(assignedDriver?['id'], assignedDriver?['profile_picture']))
                           : null,
                       child: assignedDriver?['profile_picture'] == null ? const Icon(Icons.person) : null,
                     ),
@@ -645,4 +675,8 @@ void _cancelRideRequest() async {
     ),
     );
   }
+
+
+
+
 }

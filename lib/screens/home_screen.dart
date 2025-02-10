@@ -32,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? rideId;
   Map<String, dynamic>? ongoingRide;
   StreamSubscription? rideStatusListener;
+  bool isDataLoaded = false; // ✅ Ensures UI waits for data
 
   @override
   void initState() {
@@ -100,6 +101,9 @@ class _HomeScreenState extends State<HomeScreen> {
         rideStatus = ride['status'];
       });
     }
+    setState(() {
+      isDataLoaded = true; // ✅ Mark data as fully loaded
+    });
   }
 
   Future<void> _fetchRides() async {
@@ -339,7 +343,10 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 20),
 
           //If ride not accepted or in progress, show "Open Map"
-          if (!isDriver && (rideStatus != "accepted") && (rideStatus != "in_progress")) ...[
+          if (isDataLoaded &&
+              !isDriver &&
+              (rideStatus != "accepted") &&
+              (rideStatus != "in_progress")) ...[
             ElevatedButton(
               onPressed: () {
                 Navigator.push(
@@ -347,12 +354,19 @@ class _HomeScreenState extends State<HomeScreen> {
                   MaterialPageRoute(
                     builder: (context) => MapScreen(userData: widget.userData),
                   ),
-                );
+                ).then((_) {
+                  // 👈 This runs when the user returns from MapScreen
+                  _checkOngoingRide(); // ✅ Refresh home screen data
+                });
               },
               child: const Text("Open Map"),
             ),
+
             /// ✅ Show "Ongoing Ride" if there is an active ride
-          ] else if (!isDriver && rideId != null && rideStatus != null) ...[
+          ] else if (isDataLoaded &&
+              !isDriver &&
+              rideId != null &&
+              rideStatus != null) ...[
             if (rideStatus == "accepted" || rideStatus == "in_progress") ...[
               Card(
                 elevation: 4,
@@ -382,7 +396,10 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ],
 
-          if (!isDriver && rideId != null && rideStatus != null) ...[],
+
+          
+
+          //if (!isDriver && rideId != null && rideStatus != null) ...[],
 
           if (isDriver) ...[
             const Text("Driver Mode: Toggle Availability",

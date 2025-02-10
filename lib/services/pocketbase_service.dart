@@ -10,7 +10,7 @@ import 'package:googleapis_auth/auth_io.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 class PocketBaseService {
-  static final PocketBase pb = PocketBase('https://wide-ends-rule.loca.lt');
+  static final PocketBase pb = PocketBase('https://wild-kiwis-kneel.loca.lt');
   StreamSubscription<Position>? locationStream;
 
     /// ✅ Listen for real-time ride updates
@@ -59,6 +59,8 @@ class PocketBaseService {
     return null;
   }
 }
+
+
 
 /// ✅ Listen for new ride requests in real-time
 Stream<Map<String, dynamic>?> listenForNewRides() {
@@ -470,25 +472,70 @@ Future<double> calculateETA({
 
 Future<Map<String, dynamic>?> fetchLatestOngoingRide(String userId) async {
   try {
-    print("📡 Fetching the latest ongoing ride for user: $userId...");
+    print("📡 Checking for an active ride for user: $userId...");
 
     final result = await pb.collection('rides').getList(
-      page: 1, 
-      perPage: 1, 
+      page: 1,
+      perPage: 1,
       filter: "rider = '$userId' && (status = 'accepted' || status = 'in_progress')",
       sort: "-created",
+      expand: "driver", // ✅ Expand only the driver, then fetch vehicle separately
     );
 
     if (result.items.isEmpty) {
-      print("🚫 No active ride found for user: $userId");
+      print("🚫 No active ride found.");
       return null;
     }
 
     final ride = result.items.first.toJson();
-    print("✅ Latest ongoing ride found: ${ride['id']} - Status: ${ride['status']}");
-    return ride;
+    print("✅ Active ride found: ${ride['id']} - Status: ${ride['status']}");
+
+    // ✅ Extract and store driver details (if available)
+    Map<String, dynamic>? driverData = ride['expand']?['driver'];
+
+    // ✅ Ensure we have all necessary details
+    if (driverData == null) {
+      print("⚠️ No driver details found in response.");
+    } else {
+      print("✅ Driver details fetched: ${driverData['name']} - ${driverData['rating']}");
+    }
+
+    // 🚗 **Manually Fetch Vehicle Data**
+    Map<String, dynamic>? vehicleData;
+    if (driverData != null && driverData['linked_vehicle'] != null) {
+      print("📡 Fetching vehicle details for driver: ${driverData['id']}");
+      vehicleData = await fetchVehicleDetails(driverData['linked_vehicle']);
+
+      if (vehicleData != null) {
+        print("✅ Vehicle details fetched: ${vehicleData['make']} - ${vehicleData['model']}");
+      } else {
+        print("❌ Failed to fetch vehicle details.");
+      }
+    }
+
+    // ✅ Calculate ETA
+    double? eta;
+    if (driverData != null && driverData.containsKey('latitude') && driverData.containsKey('longitude')) {
+      eta = await calculateETA(
+        driverLat: (driverData['latitude'] as num).toDouble(),
+        driverLng: (driverData['longitude'] as num).toDouble(),
+        pickupLat: (ride['pickup_location'] != null) ? ride['pickup_location']['latitude'] : 0.0,
+        pickupLng: (ride['pickup_location'] != null) ? ride['pickup_location']['longitude'] : 0.0,
+      );
+    }
+
+    // ✅ Return everything as a single object
+    return {
+      "id": ride['id'],
+      "status": ride['status'],
+      "pickup_location": ride['pickup_location'],
+      "dropoff_location": ride['dropoff_location'],
+      "driver": driverData,
+      "vehicle": vehicleData, // ✅ Now vehicle is properly fetched
+      "eta": eta,
+    };
   } catch (e) {
-    print("❌ ERROR fetching latest ongoing ride: $e");
+    print("❌ ERROR fetching active ride: $e");
     return null;
   }
 }
