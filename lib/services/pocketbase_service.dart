@@ -10,7 +10,7 @@ import 'package:googleapis_auth/auth_io.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 class PocketBaseService {
-  static final PocketBase pb = PocketBase('https://wild-kiwis-kneel.loca.lt');
+  static final PocketBase pb = PocketBase('https://loose-pianos-check.loca.lt');
   StreamSubscription<Position>? locationStream;
 
     /// ✅ Listen for real-time ride updates
@@ -207,6 +207,30 @@ Future<Map<String, dynamic>?> updateUser(String userId, String name, String phon
       print("❌ Failed to start location updates: $e");
     }
   }
+
+Future<Map<String, dynamic>?> fetchDriverActiveRide(String driverId) async {
+  print("📡 Fetching active ride for driver: $driverId...");
+
+  try {
+    final response = await pb.collection('rides').getFirstListItem(
+      "driver = '$driverId' && (status = 'accepted' || status = 'in_progress')",
+    );
+
+    if (response != null) {
+      // ✅ Convert `RecordModel` to JSON before accessing fields
+      final rideData = response.toJson();
+
+      print("✅ Active ride found for driver: ${rideData['id']} | Status: ${rideData['status']}");
+      return rideData;
+    } else {
+      print("🚫 No active ride found for driver.");
+      return null;
+    }
+  } catch (e) {
+    print("❌ Error fetching active ride: $e");
+    return null;
+  }
+}
 
 /// ✅ Fetch the ongoing ride for a user (excluding canceled, completed, and requested)
 Future<Map<String, dynamic>?> fetchOngoingRide(String riderId) async {

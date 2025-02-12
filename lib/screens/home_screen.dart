@@ -33,11 +33,13 @@ class _HomeScreenState extends State<HomeScreen> {
   Map<String, dynamic>? ongoingRide;
   StreamSubscription? rideStatusListener;
   bool isDataLoaded = false; // ✅ Ensures UI waits for data
+  bool _canConfirmPickup = false;
 
   @override
   void initState() {
     super.initState();
     _checkOngoingRide();
+
     print("🔍 [HomeScreen] Received userData: ${widget.userData}");
 
     List<String> roles = [];
@@ -66,6 +68,21 @@ class _HomeScreenState extends State<HomeScreen> {
       PocketBaseService()
           .startRiderLocationUpdates(widget.userData["record"]["id"]);
     }
+
+    if (isDriver) {
+      _checkDriverActiveRide();
+
+      Timer.periodic(const Duration(seconds: 3), (timer) {
+        if (!mounted || (incomingRide?['status'] == "in_progress")) {
+          print(
+              "⏹️ Stopping distance checks. Ride in progress or screen closed.");
+          timer.cancel(); // ✅ Stop checking when ride starts
+        } else {
+          print("🔄 Checking if driver is near the rider...");
+          _checkDriverActiveRide();
+        }
+      });
+    }
   }
 
   void _listenForRideUpdates() {
@@ -88,6 +105,26 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     });
+  }
+
+  void _checkDriverActiveRide() async {
+    print("📡 Checking for driver's active ride...");
+
+    Map<String, dynamic>? activeRide = await PocketBaseService()
+        .fetchDriverActiveRide(widget.userData["record"]["id"]);
+
+    if (activeRide != null) {
+      print("✅ Driver has an active ride: ${activeRide['id']}");
+
+      if (mounted) {
+        setState(() {
+          incomingRide = activeRide; // ✅ Store the ride in memory
+          _canConfirmPickup = true; // ✅ Enable the Confirm Pickup button
+        });
+      }
+    } else {
+      print("🚫 No active ride found for driver.");
+    }
   }
 
   /// ✅ Check if there is an active ride and store it
@@ -395,13 +432,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ],
-
-
-          
-
-          //if (!isDriver && rideId != null && rideStatus != null) ...[],
-
-          if (isDriver) ...[
+          if (isDriver) ...[ 
             const Text("Driver Mode: Toggle Availability",
                 style: TextStyle(fontSize: 18)),
             SwitchListTile(
@@ -412,6 +443,28 @@ class _HomeScreenState extends State<HomeScreen> {
               onChanged: _toggleActiveState,
             ),
             const SizedBox(height: 20),
+          ],
+
+          if (isDriver && incomingRide!['status'] != "in_progress") ...[
+            ElevatedButton(
+              onPressed: _canConfirmPickup
+                  ? () async {
+                      bool success = await PocketBaseService()
+                          .updateRideStatus(incomingRide!['id'], "in_progress");
+
+                      if (success) {
+                        setState(() {
+                          incomingRide!['status'] =
+                              "in_progress"; // ✅ Update UI
+                        });
+                        print("✅ Ride status updated to IN PROGRESS");
+                      } else {
+                        print("❌ Failed to update ride status.");
+                      }
+                    }
+                  : null, // ❌ Disabled if driver is too far
+              child: const Text("Confirm Pickup"),
+            ),
           ],
         ],
       ),
