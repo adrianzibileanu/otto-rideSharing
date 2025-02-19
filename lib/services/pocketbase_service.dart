@@ -10,7 +10,7 @@ import 'package:googleapis_auth/auth_io.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 class PocketBaseService {
-  static final PocketBase pb = PocketBase('https://loose-pianos-check.loca.lt');
+   static final PocketBase pb = PocketBase('http://5.75.142.186:8090');
   StreamSubscription<Position>? locationStream;
 
     /// ✅ Listen for real-time ride updates
@@ -24,6 +24,53 @@ class PocketBaseService {
 
     return controller.stream;
   }
+
+
+Future<Map<String, dynamic>?> fetchDriverActiveRide(String driverId) async {
+
+  print("📡 Fetching active ride for driver: $driverId...");
+
+
+
+  try {
+
+    final response = await pb.collection('rides').getFirstListItem(
+
+      "driver = '$driverId' && (status = 'accepted' || status = 'in_progress')",
+
+    );
+
+
+
+    if (response != null) {
+
+      // ✅ Convert `RecordModel` to JSON before accessing fields
+
+      final rideData = response.toJson();
+
+
+
+      print("✅ Active ride found for driver: ${rideData['id']} | Status: ${rideData['status']}");
+
+      return rideData;
+
+    } else {
+
+      print("🚫 No active ride found for driver.");
+
+      return null;
+
+    }
+
+  } catch (e) {
+
+    print("❌ Error fetching active ride: $e");
+
+    return null;
+
+  }
+
+}
 
   // ✅ User Authentication
   Future<Map<String, dynamic>?> login(String identity, String password) async {
@@ -123,6 +170,7 @@ Future<void> updateUserFcmToken(String userId, String fcmToken) async {
   }
 }
 
+//Used to update user profile
 Future<Map<String, dynamic>?> updateUser(String userId, String name, String phone) async {
   try {
     final response = await pb.collection('users').update(userId, body: {
@@ -207,30 +255,6 @@ Future<Map<String, dynamic>?> updateUser(String userId, String name, String phon
       print("❌ Failed to start location updates: $e");
     }
   }
-
-Future<Map<String, dynamic>?> fetchDriverActiveRide(String driverId) async {
-  print("📡 Fetching active ride for driver: $driverId...");
-
-  try {
-    final response = await pb.collection('rides').getFirstListItem(
-      "driver = '$driverId' && (status = 'accepted' || status = 'in_progress')",
-    );
-
-    if (response != null) {
-      // ✅ Convert `RecordModel` to JSON before accessing fields
-      final rideData = response.toJson();
-
-      print("✅ Active ride found for driver: ${rideData['id']} | Status: ${rideData['status']}");
-      return rideData;
-    } else {
-      print("🚫 No active ride found for driver.");
-      return null;
-    }
-  } catch (e) {
-    print("❌ Error fetching active ride: $e");
-    return null;
-  }
-}
 
 /// ✅ Fetch the ongoing ride for a user (excluding canceled, completed, and requested)
 Future<Map<String, dynamic>?> fetchOngoingRide(String riderId) async {
@@ -346,15 +370,14 @@ Future<bool> updateRideStatus(String rideId, String newStatus) async {
 Stream<Map<String, dynamic>?> getRideStream() {
   final controller = StreamController<Map<String, dynamic>?>();
 
-  print("📡 Subscribing to PocketBase ride updates...");
+  print("📡 [PocketBase] Subscribing to ride updates...");
 
   pb.collection('rides').subscribe('*', (e) {
     if (e.record != null) {
-      print("🔔 Real-time ride update received: ${e.record}");
-
-      controller.add(e.record!.toJson()); // ✅ Send ride data to the listener
+      print("🔔 [PocketBase] Real-time ride update received: ${e.record}");
+      controller.add(e.record!.toJson());
     } else {
-      print("⚠️ Warning: Received an update, but the record is null!");
+      print("⚠️ [PocketBase] Warning: Received an update, but the record is null!");
     }
   });
 

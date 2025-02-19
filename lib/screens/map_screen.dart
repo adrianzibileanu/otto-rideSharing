@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:pocketbase/pocketbase.dart';
 import '../services/pocketbase_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert'; // ✅ Required for jsonDecode
@@ -30,7 +31,15 @@ class _MapScreenState extends State<MapScreen> {
   bool isDriverAssigned = false;
   bool isSheetExpanded = false;
   String? rideStatus;
-  String pb = "https://loose-pianos-check.loca.lt";
+  static final PocketBase pb = PocketBase('http://5.75.142.186:8090');
+  PocketBase get _pb {
+    if (pb == null) {
+      throw Exception(
+          "🚨 PocketBase is not initialized! Run setupRemoteConfig() first.");
+    }
+    return pb!;
+  }
+
   bool isDataLoaded = false; // ✅ Prevent UI rendering until data is ready
 
   @override
@@ -39,19 +48,17 @@ class _MapScreenState extends State<MapScreen> {
     _restoreRideState();
   }
 
+  String getProfileImageUrl(String? userId, String? imagePath) {
+    if (imagePath == null ||
+        imagePath.isEmpty ||
+        userId == null ||
+        userId.isEmpty) {
+      return ""; // Return empty string if no image
+    }
 
-
-
-String getProfileImageUrl(String? userId, String? imagePath) {
-  if (imagePath == null || imagePath.isEmpty || userId == null || userId.isEmpty) {
-    return ""; // Return empty string if no image
+    // ✅ Construct the correct URL based on PocketBase file storage
+    return "${pb.baseUrl}/api/files/_pb_users_auth_/$userId/$imagePath";
   }
-
-  // ✅ Construct the correct URL based on PocketBase file storage
-  return "$pb/api/files/_pb_users_auth_/$userId/$imagePath";
-}
-
-
 
   /// ✅ Find Nearby Drivers Based on Pickup Location
   void _findDrivers() async {
@@ -64,21 +71,23 @@ String getProfileImageUrl(String? userId, String? imagePath) {
     double searchLat = pickupLocation!.latitude;
     double searchLng = pickupLocation!.longitude;
 
-    print("📡 Searching for nearby drivers around pickup location: ($searchLat, $searchLng)");
+    print(
+        "📡 Searching for nearby drivers around pickup location: ($searchLat, $searchLng)");
     if (!mounted) return; // ✅ Prevent setState() if widget is disposed
     setState(() => isLoading = true);
 
-    List<Map<String, dynamic>> drivers = await PocketBaseService().findNearbyDrivers(
+    List<Map<String, dynamic>> drivers =
+        await PocketBaseService().findNearbyDrivers(
       riderLat: searchLat,
       riderLng: searchLng,
       userId: userId,
     );
 
-if (!mounted) return; // ✅ Prevent setState() if widget is disposed
+    if (!mounted) return; // ✅ Prevent setState() if widget is disposed
     setState(() {
-     nearbyDrivers = drivers;
-     isLoading = true;
-  });
+      nearbyDrivers = drivers;
+      isLoading = true;
+    });
     /*setState(() {
       nearbyDrivers = drivers;
       isLoading = false;
@@ -101,11 +110,10 @@ if (!mounted) return; // ✅ Prevent setState() if widget is disposed
 
   /// ✅ Set Pickup Location & Search for Drivers
   void _setPickup(LatLng point) {
-
- if (rideId != null) {
-    print("🚫 Cannot change pickup location, ride is already created.");
-    return;
-  }
+    if (rideId != null) {
+      print("🚫 Cannot change pickup location, ride is already created.");
+      return;
+    }
 
     setState(() {
       pickupLocation = point;
@@ -116,11 +124,10 @@ if (!mounted) return; // ✅ Prevent setState() if widget is disposed
 
   /// ✅ Set Dropoff Location
   void _setDropoff(LatLng point) {
-
-  if (rideId != null) {
-    print("🚫 Cannot change dropoff location, ride is already created.");
-    return;
-  }
+    if (rideId != null) {
+      print("🚫 Cannot change dropoff location, ride is already created.");
+      return;
+    }
 
     setState(() {
       dropoffLocation = point;
@@ -129,81 +136,81 @@ if (!mounted) return; // ✅ Prevent setState() if widget is disposed
   }
 
   /// ✅ Confirm Ride Request and Save in PocketBase
- void _confirmRideRequest() async {
-  if (pickupLocation == null) {
-    print("🚨 ERROR: Cannot confirm ride. No pickup location set!");
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Please select a pickup location before confirming.')),
-    );
-    return;
-  }
-
-  print("📡 Sending ride request to PocketBase...");
-
-  try {
-    final String? newRideId = await PocketBaseService().saveRideRequest(
-      rider: widget.userData['record']['id'],
-      pickupLat: pickupLocation!.latitude,
-      pickupLng: pickupLocation!.longitude,
-      dropoffLat: dropoffLocation?.latitude ?? pickupLocation!.latitude,
-      dropoffLng: dropoffLocation?.longitude ?? pickupLocation!.longitude,
-    );
-
-    print("✅ Ride request result: $newRideId");
-
-    if (newRideId != null && newRideId.isNotEmpty) {
-      print("✅ Ride request successfully created!");
+  void _confirmRideRequest() async {
+    if (pickupLocation == null) {
+      print("🚨 ERROR: Cannot confirm ride. No pickup location set!");
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ride request submitted!')),
+        const SnackBar(
+            content:
+                Text('Please select a pickup location before confirming.')),
+      );
+      return;
+    }
+
+    print("📡 Sending ride request to PocketBase...");
+
+    try {
+      final String? newRideId = await PocketBaseService().saveRideRequest(
+        rider: widget.userData['record']['id'],
+        pickupLat: pickupLocation!.latitude,
+        pickupLng: pickupLocation!.longitude,
+        dropoffLat: dropoffLocation?.latitude ?? pickupLocation!.latitude,
+        dropoffLng: dropoffLocation?.longitude ?? pickupLocation!.longitude,
       );
 
-      _listenForDriverAssignment(); // Start listening for driver assignment
+      print("✅ Ride request result: $newRideId");
 
-      setState(() {
-        isWaitingForDriver = true;
-        rideId = newRideId; // ✅ Store the ride ID correctly
-      });
-    } else {
-      print("❌ Failed to create ride request.");
+      if (newRideId != null && newRideId.isNotEmpty) {
+        print("✅ Ride request successfully created!");
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ride request submitted!')),
+        );
+
+        _listenForDriverAssignment(); // Start listening for driver assignment
+
+        setState(() {
+          isWaitingForDriver = true;
+          rideId = newRideId; // ✅ Store the ride ID correctly
+        });
+      } else {
+        print("❌ Failed to create ride request.");
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to submit ride request.')),
+        );
+      }
+    } catch (e) {
+      print("❌ Exception while confirming ride: $e");
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to submit ride request.')),
+        SnackBar(content: Text('Error: ${e.toString()}')),
       );
     }
-  } catch (e) {
-    print("❌ Exception while confirming ride: $e");
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Error: ${e.toString()}')),
-    );
-  }
-}
-
-/// ✅ Parse location from PocketBase response
-LatLng _parseLocation(dynamic locationData) {
-  if (locationData == null) {
-    print("⚠️ Location data is null!");
-    return LatLng(0.0, 0.0); // Default fallback
   }
 
-  try {
-    Map<String, dynamic> decodedLocation = locationData is String
-        ? jsonDecode(locationData)
-        : locationData;
+  /// ✅ Parse location from PocketBase response
+  LatLng _parseLocation(dynamic locationData) {
+    if (locationData == null) {
+      print("⚠️ Location data is null!");
+      return LatLng(0.0, 0.0); // Default fallback
+    }
 
-    return LatLng(
-      (decodedLocation['latitude'] as num).toDouble(),
-      (decodedLocation['longitude'] as num).toDouble(),
-    );
-  } catch (e) {
-    print("❌ Error parsing location data: $e");
-    return LatLng(0.0, 0.0);
+    try {
+      Map<String, dynamic> decodedLocation =
+          locationData is String ? jsonDecode(locationData) : locationData;
+
+      return LatLng(
+        (decodedLocation['latitude'] as num).toDouble(),
+        (decodedLocation['longitude'] as num).toDouble(),
+      );
+    } catch (e) {
+      print("❌ Error parsing location data: $e");
+      return LatLng(0.0, 0.0);
+    }
   }
-}
 
+  void _showDriverInfoSheet() {
+    if (assignedDriver == null || driverVehicle == null) return;
 
-void _showDriverInfoSheet() {
-  if (assignedDriver == null || driverVehicle == null) return;
-
- /* showModalBottomSheet(
+    /* showModalBottomSheet(
     context: context,
     isDismissible: false, // Prevent dismissing
     builder: (context) {
@@ -235,86 +242,90 @@ void _showDriverInfoSheet() {
       );
     },
   );*/
-}
+  }
 
+  void _listenForDriverAssignment() {
+    print("📡 Listening for driver assignment...");
 
-void _listenForDriverAssignment() {
-  print("📡 Listening for driver assignment...");
-  
-  PocketBaseService().getRideUpdates().listen((rideData) async {
-    if (rideData != null && rideData['status'] == 'accepted') {
-      print("✅ Driver assigned! Fetching details...");
+    PocketBaseService().getRideUpdates().listen((rideData) async {
+      if (rideData != null && rideData['status'] == 'accepted') {
+        print("✅ Driver assigned! Fetching details...");
 
-      Map<String, dynamic>? driverData = await PocketBaseService().fetchDriverDetails(rideData['driver']);
-      Map<String, dynamic>? vehicleData = await PocketBaseService().fetchVehicleDetails(driverData?['linked_vehicle']);
+        Map<String, dynamic>? driverData =
+            await PocketBaseService().fetchDriverDetails(rideData['driver']);
+        Map<String, dynamic>? vehicleData = await PocketBaseService()
+            .fetchVehicleDetails(driverData?['linked_vehicle']);
 
-      double eta = await PocketBaseService().calculateETA(
-        driverLat: driverData?['latitude'],
-        driverLng: driverData?['longitude'],
-        pickupLat: pickupLocation!.latitude,
-        pickupLng: pickupLocation!.longitude,
-      );
+        double eta = await PocketBaseService().calculateETA(
+          driverLat: driverData?['latitude'],
+          driverLng: driverData?['longitude'],
+          pickupLat: pickupLocation!.latitude,
+          pickupLng: pickupLocation!.longitude,
+        );
 
-      setState(() {
-        assignedDriver = driverData;
-        driverVehicle = vehicleData;
-        driverETA = eta;
-        isDriverAssigned = true;
-        isWaitingForDriver = false; // ✅ Hide the "Looking for a driver..." UI
-        nearbyDrivers = []; // ✅ Remove all other drivers once assigned
-      });
+        setState(() {
+          assignedDriver = driverData;
+          driverVehicle = vehicleData;
+          driverETA = eta;
+          isDriverAssigned = true;
+          isWaitingForDriver = false; // ✅ Hide the "Looking for a driver..." UI
+          nearbyDrivers = []; // ✅ Remove all other drivers once assigned
+        });
 
-      _showDriverInfoSheet();
-    }
-  });
-  
-}
-
-void _restoreRideState() async {
-  print("📡 Attempting to restore last ride state...");
-
-  String userId = widget.userData["record"]["id"];
-  Map<String, dynamic>? rideData = await PocketBaseService().fetchLatestOngoingRide(userId);
-
-  if (rideData != null) {
-    print("🔄 Ride Data Received: $rideData");
-
-    setState(() {
-      rideId = rideData['id'];
-      isDriverAssigned = rideData['status'] == 'accepted' || rideData['status'] == 'in_progress';
-      isWaitingForDriver = rideData['status'] == 'requested';
-      assignedDriver = rideData['driver'];
-      driverVehicle = rideData['vehicle'];
-      driverETA = rideData['eta'];
-       // ✅ Restore pickup and dropoff locations
-      if (rideData.containsKey('pickup_location') && rideData['pickup_location'] != null) {
-        pickupLocation = _parseLocation(rideData['pickup_location']);
+        _showDriverInfoSheet();
       }
-
-      if (rideData.containsKey('dropoff_location') && rideData['dropoff_location'] != null) {
-        dropoffLocation = _parseLocation(rideData['dropoff_location']);
-      }
-    });
-
-    print("✅ Ride state restored successfully.");
-  } else {
-    print("🚫 No active ride found, resetting UI.");
-    if (!mounted) return; // ✅ 
-    setState(() {
-      rideId = null;
-      isDriverAssigned = false;
-      isWaitingForDriver = false;
-      assignedDriver = null;
-      driverVehicle = null;
-      driverETA = null;
     });
   }
 
-  // ✅ Now that all data is loaded, allow UI to render
-  setState(() {
-    isDataLoaded = true;
-  });
-}
+  void _restoreRideState() async {
+    print("📡 Attempting to restore last ride state...");
+
+    String userId = widget.userData["record"]["id"];
+    Map<String, dynamic>? rideData =
+        await PocketBaseService().fetchLatestOngoingRide(userId);
+
+    if (rideData != null) {
+      print("🔄 Ride Data Received: $rideData");
+
+      setState(() {
+        rideId = rideData['id'];
+        isDriverAssigned = rideData['status'] == 'accepted' ||
+            rideData['status'] == 'in_progress';
+        isWaitingForDriver = rideData['status'] == 'requested';
+        assignedDriver = rideData['driver'];
+        driverVehicle = rideData['vehicle'];
+        driverETA = rideData['eta'];
+        // ✅ Restore pickup and dropoff locations
+        if (rideData.containsKey('pickup_location') &&
+            rideData['pickup_location'] != null) {
+          pickupLocation = _parseLocation(rideData['pickup_location']);
+        }
+
+        if (rideData.containsKey('dropoff_location') &&
+            rideData['dropoff_location'] != null) {
+          dropoffLocation = _parseLocation(rideData['dropoff_location']);
+        }
+      });
+
+      print("✅ Ride state restored successfully.");
+    } else {
+      print("🚫 No active ride found, resetting UI.");
+      if (!mounted) return; // ✅
+      setState(() {
+        rideId = null;
+        isDriverAssigned = false;
+        isWaitingForDriver = false;
+        assignedDriver = null;
+        driverVehicle = null;
+        driverETA = null;
+      });
+    }
+
+    // ✅ Now that all data is loaded, allow UI to render
+    setState(() {
+      isDataLoaded = true;
+    });
+  }
 
 /*
 void _restoreRideState() async {
@@ -407,276 +418,301 @@ double eta = await PocketBaseService().calculateETA(
 }
 */
 
-/// ✅ Warn Before Leaving If Ride is Still Requested
-/// ✅ Warn Before Leaving If Ride is Still Requested
-Future<bool> _handleBackNavigation() async {
-  //here add the function to reload the home screen maybe
-  if (isWaitingForDriver) {
-    bool confirmExit = await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text("Cancel Ride Request?"),
-          content: const Text(
-              "If you go back now, your ride request will be canceled."),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text("No, Keep Waiting"),
-            ),
-            TextButton(
-              onPressed: () {
-                _cancelRideRequest();
-                Navigator.of(context).pop(true);
-              },
-              child: const Text("Yes, Cancel Ride"),
-            ),
-          ],
-        );
-      },
-    );
+  /// ✅ Warn Before Leaving If Ride is Still Requested
+  /// ✅ Warn Before Leaving If Ride is Still Requested
+  Future<bool> _handleBackNavigation() async {
+    //here add the function to reload the home screen maybe
+    if (isWaitingForDriver) {
+      bool confirmExit = await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text("Cancel Ride Request?"),
+            content: const Text(
+                "If you go back now, your ride request will be canceled."),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text("No, Keep Waiting"),
+              ),
+              TextButton(
+                onPressed: () {
+                  _cancelRideRequest();
+                  Navigator.of(context).pop(true);
+                },
+                child: const Text("Yes, Cancel Ride"),
+              ),
+            ],
+          );
+        },
+      );
 
-    return confirmExit;
-  } else if (isDriverAssigned && assignedDriver != null) {
-    /// ✅ Preserve Active Ride State When Returning to Home Screen
-    print("🚗 Active ride detected! Returning to home screen...");
+      return confirmExit;
+    } else if (isDriverAssigned && assignedDriver != null) {
+      /// ✅ Preserve Active Ride State When Returning to Home Screen
+      print("🚗 Active ride detected! Returning to home screen...");
 
-    /// ✅ Ensure Rider Returns with Current Ride ID
-    Navigator.pop(context, rideId);
-    return false; // Prevent default back behavior
-  }
-  return true;
-}
-
-/// ✅ Cancel the Ride Request
-void _cancelRideRequest() async {
-  if (rideId == null || rideId!.isEmpty) {
-    print("🚨 ERROR: No active ride to cancel! Ride ID is NULL or empty.");
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('No active ride to cancel.')),
-    );
-    return;
+      /// ✅ Ensure Rider Returns with Current Ride ID
+      Navigator.pop(context, rideId);
+      return false; // Prevent default back behavior
+    }
+    return true;
   }
 
-  print("❌ Canceling ride: $rideId...");
+  /// ✅ Cancel the Ride Request
+  void _cancelRideRequest() async {
+    if (rideId == null || rideId!.isEmpty) {
+      print("🚨 ERROR: No active ride to cancel! Ride ID is NULL or empty.");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No active ride to cancel.')),
+      );
+      return;
+    }
 
-  bool success = await PocketBaseService().updateRideStatus(rideId!, "canceled");
+    print("❌ Canceling ride: $rideId...");
 
-  if (success) {
-    print("✅ Ride canceled successfully!");
+    bool success =
+        await PocketBaseService().updateRideStatus(rideId!, "canceled");
 
-    setState(() {
-      isWaitingForDriver = false;
-      showConfirmButton = true;
-      rideId = null;
-    });
+    if (success) {
+      print("✅ Ride canceled successfully!");
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Ride request canceled.')),
-    );
-  } else {
-    print("❌ Failed to cancel ride.");
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Failed to cancel ride request.')),
-    );
+      setState(() {
+        isWaitingForDriver = false;
+        showConfirmButton = true;
+        rideId = null;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ride request canceled.')),
+      );
+    } else {
+      print("❌ Failed to cancel ride.");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to cancel ride request.')),
+      );
+    }
   }
-}
-
 
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: _handleBackNavigation,
-    child: Scaffold(
-      appBar: AppBar(title: const Text("Live Driver Map")),
-      body: Stack(
-  children: [
-    /// ✅ Main Map Display
-    FlutterMap(
-      options: MapOptions(
-        center: pickupLocation ?? LatLng(44.3900, 26.0920),
-        zoom: 15.0,
-        onTap: (tapPosition, point) {
-          if (pickupLocation == null) {
-            _setPickup(point);
-          } else {
-            _setDropoff(point);
-          }
-        },
-      ),
-      children: [
-        TileLayer(
-          urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-          subdomains: ['a', 'b', 'c'],
-        ),
-        MarkerLayer(
-          markers: [
-            if (pickupLocation != null)
-              Marker(
-                width: 40.0,
-                height: 40.0,
-                point: pickupLocation!,
-                child: const Icon(Icons.location_on, color: Colors.green, size: 40),
+      child: Scaffold(
+        appBar: AppBar(title: const Text("Live Driver Map")),
+        body: Stack(
+          children: [
+            /// ✅ Main Map Display
+            FlutterMap(
+              options: MapOptions(
+                center: pickupLocation ?? LatLng(44.3900, 26.0920),
+                zoom: 15.0,
+                onTap: (tapPosition, point) {
+                  if (pickupLocation == null) {
+                    _setPickup(point);
+                  } else {
+                    _setDropoff(point);
+                  }
+                },
               ),
-            if (dropoffLocation != null)
-              Marker(
-                width: 40.0,
-                height: 40.0,
-                point: dropoffLocation!,
-                child: const Icon(Icons.location_on, color: Colors.red, size: 40),
+              children: [
+                TileLayer(
+                  urlTemplate:
+                      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  subdomains: ['a', 'b', 'c'],
+                ),
+                MarkerLayer(
+                  markers: [
+                    if (pickupLocation != null)
+                      Marker(
+                        width: 40.0,
+                        height: 40.0,
+                        point: pickupLocation!,
+                        child: const Icon(Icons.location_on,
+                            color: Colors.green, size: 40),
+                      ),
+                    if (dropoffLocation != null)
+                      Marker(
+                        width: 40.0,
+                        height: 40.0,
+                        point: dropoffLocation!,
+                        child: const Icon(Icons.location_on,
+                            color: Colors.red, size: 40),
+                      ),
+                    // ✅ Show all nearby drivers BEFORE a ride is accepted
+                    if (!isDriverAssigned)
+                      ...nearbyDrivers.map(
+                        (driver) => Marker(
+                          width: 40.0,
+                          height: 40.0,
+                          point: LatLng(
+                            (driver['latitude'] as num).toDouble(),
+                            (driver['longitude'] as num).toDouble(),
+                          ),
+                          child: const Icon(Icons.directions_car,
+                              color: Colors.blue, size: 40),
+                        ),
+                      ),
+                    // ✅ Show ONLY assigned driver AFTER ride is accepted
+                    if (isDriverAssigned && assignedDriver != null)
+                      Marker(
+                        width: 40.0,
+                        height: 40.0,
+                        point: LatLng(
+                          (assignedDriver?['latitude'] as num).toDouble(),
+                          (assignedDriver?['longitude'] as num).toDouble(),
+                        ),
+                        child: const Icon(Icons.directions_car,
+                            color: Colors.orange,
+                            size: 40), // 🔥 Highlight assigned driver
+                      ),
+                  ],
+                ),
+              ],
+            ),
+
+            /// ✅ Confirm Ride Button (Remains as before)
+            if (isDataLoaded &&
+                showConfirmButton &&
+                !isDriverAssigned &&
+                assignedDriver == null)
+              Positioned(
+                bottom: 50,
+                left: 20,
+                right: 20,
+                child: ElevatedButton(
+                  onPressed: _confirmRideRequest,
+                  child: const Text("Confirm Ride"),
+                ),
               ),
-            // ✅ Show all nearby drivers BEFORE a ride is accepted
-            if (!isDriverAssigned)
-              ...nearbyDrivers.map(
-                (driver) => Marker(
-                  width: 40.0,
-                  height: 40.0,
-                  point: LatLng(
-                    (driver['latitude'] as num).toDouble(),
-                    (driver['longitude'] as num).toDouble(),
+
+            /// ✅ "Looking for a driver" Pop-up (Disappears when driver is assigned)
+            if (isWaitingForDriver)
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(16),
+                      topRight: Radius.circular(16),
+                    ),
                   ),
-                  child: const Icon(Icons.directions_car, color: Colors.blue, size: 40),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text("Looking for a driver...",
+                          style: TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 10),
+                      const CircularProgressIndicator(),
+                      const SizedBox(height: 10),
+                      ElevatedButton(
+                        onPressed: _cancelRideRequest,
+                        child: const Text("Cancel Ride"),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            // ✅ Show ONLY assigned driver AFTER ride is accepted
+
+            /// ✅ Draggable Driver Info Panel (Now allows map interaction)
             if (isDriverAssigned && assignedDriver != null)
-              Marker(
-                width: 40.0,
-                height: 40.0,
-                point: LatLng(
-                  (assignedDriver?['latitude'] as num).toDouble(),
-                  (assignedDriver?['longitude'] as num).toDouble(),
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: GestureDetector(
+                  onVerticalDragUpdate: (details) {
+                    // Drag up or down to interact
+                    if (details.primaryDelta! < 0) {
+                      setState(() {
+                        isSheetExpanded = true;
+                      });
+                    } else {
+                      setState(() {
+                        isSheetExpanded = false;
+                      });
+                    }
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    height: isSheetExpanded ? 250 : 80,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      borderRadius:
+                          BorderRadius.vertical(top: Radius.circular(16)),
+                      boxShadow: [
+                        BoxShadow(color: Colors.black26, blurRadius: 5)
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        /// 📌 Drag Handle
+                        Container(
+                          width: 40,
+                          height: 5,
+                          margin: const EdgeInsets.symmetric(vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[400],
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+
+                        if (isSheetExpanded) ...[
+                          ListTile(
+                            leading: CircleAvatar(
+                              backgroundImage:
+                                  assignedDriver?['profile_picture'] != null &&
+                                          assignedDriver?['profile_picture']
+                                              .isNotEmpty
+                                      ? NetworkImage(getProfileImageUrl(
+                                          assignedDriver?['id'],
+                                          assignedDriver?['profile_picture']))
+                                      : null,
+                              child: assignedDriver?['profile_picture'] == null
+                                  ? const Icon(Icons.person)
+                                  : null,
+                            ),
+                            title: Text(
+                                "${assignedDriver?['name'] ?? 'Unknown Driver'}"),
+                            subtitle: Text(
+                                "⭐ ${assignedDriver?['rating'] ?? 'No rating'}"),
+                          ),
+                          const Divider(),
+                          ListTile(
+                            leading: const Icon(Icons.directions_car),
+                            title: Text(
+                                "${driverVehicle?['make']} ${driverVehicle?['model']}"),
+                            subtitle: Text(
+                                "Color: ${driverVehicle?['color']} | Plates: ${driverVehicle?['license_plate']}"),
+                          ),
+                          const Divider(),
+                          Text(
+                              "⏳ Estimated Arrival: ${driverETA?.toStringAsFixed(1)} mins",
+                              style: const TextStyle(
+                                  fontSize: 16, fontWeight: FontWeight.bold)),
+                        ],
+                        if (!isSheetExpanded)
+                          const Padding(
+                            padding: EdgeInsets.all(8.0),
+                            child: Text("Swipe up for details",
+                                style: TextStyle(
+                                    fontSize: 14, color: Colors.grey)),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
-                child: const Icon(Icons.directions_car, color: Colors.orange, size: 40), // 🔥 Highlight assigned driver
               ),
           ],
         ),
-      ],
-    ),
-
-    /// ✅ Confirm Ride Button (Remains as before)
-    if (isDataLoaded && showConfirmButton && !isDriverAssigned && assignedDriver == null)
-      Positioned(
-        bottom: 50,
-        left: 20,
-        right: 20,
-        child: ElevatedButton(
-          onPressed: _confirmRideRequest,
-          child: const Text("Confirm Ride"),
-        ),
       ),
-
-    /// ✅ "Looking for a driver" Pop-up (Disappears when driver is assigned)
-    if (isWaitingForDriver)
-      Positioned(
-        bottom: 0,
-        left: 0,
-        right: 0,
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(16),
-              topRight: Radius.circular(16),
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text("Looking for a driver...", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 10),
-              const CircularProgressIndicator(),
-              const SizedBox(height: 10),
-              ElevatedButton(
-                onPressed: _cancelRideRequest,
-                child: const Text("Cancel Ride"),
-              ),
-            ],
-          ),
-        ),
-      ),
-
-    /// ✅ Draggable Driver Info Panel (Now allows map interaction)
-    if (isDriverAssigned && assignedDriver != null)
-      Positioned(
-        bottom: 0,
-        left: 0,
-        right: 0,
-        child: GestureDetector(
-          onVerticalDragUpdate: (details) {
-            // Drag up or down to interact
-            if (details.primaryDelta! < 0) {
-              setState(() {
-                isSheetExpanded = true;
-              });
-            } else {
-              setState(() {
-                isSheetExpanded = false;
-              });
-            }
-          },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            height: isSheetExpanded ? 250 : 80,
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-              boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 5)],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                /// 📌 Drag Handle
-                Container(
-                  width: 40,
-                  height: 5,
-                  margin: const EdgeInsets.symmetric(vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[400],
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-
-                if (isSheetExpanded) ...[
-                  ListTile(
-                    leading: CircleAvatar(
-                      backgroundImage: assignedDriver?['profile_picture'] != null && assignedDriver?['profile_picture'].isNotEmpty
-                          ? NetworkImage(getProfileImageUrl(assignedDriver?['id'], assignedDriver?['profile_picture']))
-                          : null,
-                      child: assignedDriver?['profile_picture'] == null ? const Icon(Icons.person) : null,
-                    ),
-                    title: Text("${assignedDriver?['name'] ?? 'Unknown Driver'}"),
-                    subtitle: Text("⭐ ${assignedDriver?['rating'] ?? 'No rating'}"),
-                  ),
-                  const Divider(),
-                  ListTile(
-                    leading: const Icon(Icons.directions_car),
-                    title: Text("${driverVehicle?['make']} ${driverVehicle?['model']}"),
-                    subtitle: Text("Color: ${driverVehicle?['color']} | Plates: ${driverVehicle?['license_plate']}"),
-                  ),
-                  const Divider(),
-                  Text("⏳ Estimated Arrival: ${driverETA?.toStringAsFixed(1)} mins",
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                ],
-                if (!isSheetExpanded)
-                  const Padding(
-                    padding: EdgeInsets.all(8.0),
-                    child: Text("Swipe up for details", style: TextStyle(fontSize: 14, color: Colors.grey)),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-  ],
-),
-    ),
     );
   }
-
-
-
-
 }

@@ -5,9 +5,6 @@ import '../screens/profile_screen.dart';
 import '../screens/map_screen.dart';
 import 'package:geolocator/geolocator.dart';
 
-///TO DO!!! ADD MORE WAIT TIME FOR:
-///1. login to home screen
-///2. loading the map
 
 class HomeScreen extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -36,40 +33,48 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _canConfirmPickup = false;
 
   @override
-  void initState() {
-    super.initState();
-    _checkOngoingRide();
+void initState() {
+  super.initState();
+  _checkOngoingRide();
 
-    print("🔍 [HomeScreen] Received userData: ${widget.userData}");
+  print("🔍 [HomeScreen] Received userData: ${widget.userData}");
 
-    List<String> roles = [];
-    if (widget.userData.containsKey("record") &&
-        widget.userData["record"].containsKey("role")) {
-      var roleField = widget.userData["record"]["role"];
-      if (roleField is String) {
-        roles = [roleField];
-      } else if (roleField is List) {
-        roles = roleField.cast<String>();
-      }
+  List<String> roles = [];
+  if (widget.userData.containsKey("record") &&
+      widget.userData["record"].containsKey("role")) {
+    var roleField = widget.userData["record"]["role"];
+    if (roleField is String) {
+      roles = [roleField];
+    } else if (roleField is List) {
+      roles = roleField.cast<String>();
     }
+  }
 
-    isDriver = roles.contains("driver");
-    bool isRider = roles.contains("rider");
+  isDriver = roles.contains("driver");
+  bool isRider = roles.contains("rider");
 
-    _fetchRides();
-    _startDriverUpdates();
-    _listenForRideUpdates(); // ✅ Start listening for ride updates
+  print("📝 [HomeScreen] User Roles: $roles");
+  print("📝 [HomeScreen] isDriver: $isDriver, isRider: $isRider");
 
-    if (isDriver) {
-      PocketBaseService()
-          .startDriverLocationUpdates(widget.userData["record"]["id"]);
-      _listenForNewRides(); // ✅ Start listening for ride requests if driver
-    } else if (isRider) {
-      PocketBaseService()
-          .startRiderLocationUpdates(widget.userData["record"]["id"]);
-    }
+  _fetchRides();
+  _startDriverUpdates();
 
-    if (isDriver) {
+  if (isDriver) {
+    print("📝 [HomeScreen] Starting driver location updates and listening for new rides...");
+    PocketBaseService()
+        .startDriverLocationUpdates(widget.userData["record"]["id"]);
+    _listenForNewRides(); // ✅ Start listening for ride requests if driver
+  } else if (isRider) {
+    print("📝 [HomeScreen] Starting rider location updates and listening for ride updates...");
+    PocketBaseService()
+        .startRiderLocationUpdates(widget.userData["record"]["id"]);
+    _listenForRideUpdates(); // ✅ Start listening for ride updates if rider
+  }
+
+
+ /*   
+ This part is used for the driver's confirm button -> TO CHECK
+ if (isDriver) {
       _checkDriverActiveRide();
 
       Timer.periodic(const Duration(seconds: 3), (timer) {
@@ -82,9 +87,11 @@ class _HomeScreenState extends State<HomeScreen> {
           _checkDriverActiveRide();
         }
       });
-    }
+    }*/
   }
 
+
+ // Listens for any changes to the current ride
   void _listenForRideUpdates() {
     print("📡 Listening for ride status updates...");
 
@@ -107,6 +114,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  //Used to fetch the current rider's active ride (if any)
   void _checkDriverActiveRide() async {
     print("📡 Checking for driver's active ride...");
 
@@ -143,6 +151,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+//recover rides
   Future<void> _fetchRides() async {
     setState(() => isLoading = true);
 
@@ -156,6 +165,7 @@ class _HomeScreenState extends State<HomeScreen> {
     print("✅ Ride history updated: ${rideHistory.length} rides loaded.");
   }
 
+ //Updates the drivers location in real time (?)
   void _startDriverUpdates() {
     if (!isDriver) return;
 
@@ -211,39 +221,44 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  /// What to do when the state ends completely.
   @override
   void dispose() {
-    rideStatusListener?.cancel();
-    driverUpdateTimer?.cancel();
-    rideListener?.cancel(); // ✅ Stop listening when leaving
+    rideStatusListener?.cancel(); // Stop lstening for ride Status.
+    driverUpdateTimer?.cancel(); // Stop updating the timer.
+    rideListener?.cancel(); // ✅ Stop listening when leaving.
     if (isDriver) {
       PocketBaseService()
-          .stopDriverLocationUpdates(widget.userData["record"]["id"]);
+          .stopDriverLocationUpdates(widget.userData["record"]["id"]); //stop driver's location updates
     }
     super.dispose();
   }
 
-// new
-  void _listenForNewRides() {
-    if (!isDriver) return; // ✅ Only listen if the user is a driver
+// listen for incoming rides
+ void _listenForNewRides() {
+  if (!isDriver) return; // Only listen if the user is a driver
 
-    print("📡 Listening for new ride requests...");
+  print("📡 [Driver] Listening for new ride requests...");
 
-    rideListener = PocketBaseService().getRideStream().listen((newRide) {
-      if (newRide != null) {
-        print("🚗 New Ride Detected: $newRide");
+  rideListener = PocketBaseService().getRideStream().listen((newRide) {
+    if (newRide != null) {
+      print("🚗 [Driver] New Ride Detected: $newRide");
+      print("📝 [Driver] Ride Details: Pickup - ${newRide['pickup_location']}, Dropoff - ${newRide['dropoff_location']}");
+      setState(() {
+        incomingRide = newRide;
+      });
+      _showRideRequestPopup(newRide);
+    } else {
+      print("⚠️ [Driver] Warning: Received a null ride update.");
+    }
+  }, onError: (error) {
+    print("❌ [Driver] Error in ride stream: $error");
+  }, onDone: () {
+    print("✅ [Driver] Ride stream closed.");
+  });
+}
 
-        setState(() {
-          incomingRide = newRide;
-        });
-
-        _showRideRequestPopup(newRide);
-      } else {
-        print("⚠️ Warning: Received a null ride update.");
-      }
-    });
-  }
-
+  //✅ Launches the new ride pop-up for drivers
   void _showRideRequestPopup(Map<String, dynamic> ride) {
     showDialog(
       context: context,
@@ -444,8 +459,8 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 20),
           ],
-
-          if (isDriver && incomingRide!['status'] != "in_progress") ...[
+/*
+          if (isDriver && incomingRide!['status'] != "in_progress" && incomingRide!['status'] != null) ...[
             ElevatedButton(
               onPressed: _canConfirmPickup
                   ? () async {
@@ -464,8 +479,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     }
                   : null, // ❌ Disabled if driver is too far
               child: const Text("Confirm Pickup"),
-            ),
-          ],
+            ), 
+          ], */
         ],
       ),
     );
