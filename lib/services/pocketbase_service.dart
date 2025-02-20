@@ -27,49 +27,35 @@ class PocketBaseService {
 
 
 Future<Map<String, dynamic>?> fetchDriverActiveRide(String driverId) async {
-
   print("📡 Fetching active ride for driver: $driverId...");
 
-
-
   try {
+    final filterQuery = "driver = '$driverId' && (status = 'accepted' || status = 'in_progress')";
+    print("🔍 Filter Query: $filterQuery");
 
-    final response = await pb.collection('rides').getFirstListItem(
-
-      "driver = '$driverId' && (status = 'accepted' || status = 'in_progress')",
-
-    );
-
-
+    final response = await pb.collection('rides').getFirstListItem(filterQuery);
 
     if (response != null) {
-
-      // ✅ Convert `RecordModel` to JSON before accessing fields
-
+      // Convert RecordModel to JSON before accessing fields
       final rideData = response.toJson();
 
-
-
       print("✅ Active ride found for driver: ${rideData['id']} | Status: ${rideData['status']}");
+      print("📝 Ride Data: $rideData");
 
       return rideData;
-
     } else {
-
       print("🚫 No active ride found for driver.");
-
       return null;
-
     }
-
   } catch (e) {
-
-    print("❌ Error fetching active ride: $e");
-
+    // Handle the case where no ride is found
+    if (e.toString().contains("404") || e.toString().contains("not found")) {
+      print("🚫 No active ride found for driver.");
+    } else {
+      print("❌ Error fetching active ride: $e");
+    }
     return null;
-
   }
-
 }
 
   // ✅ User Authentication

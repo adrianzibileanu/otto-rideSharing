@@ -63,7 +63,8 @@ void initState() {
     print("📝 [HomeScreen] Starting driver location updates and listening for new rides...");
     PocketBaseService()
         .startDriverLocationUpdates(widget.userData["record"]["id"]);
-    _listenForNewRides(); // ✅ Start listening for ride requests if driver
+          _listenForNewRides(); // ✅ Start listening for ride requests if driver
+
   } else if (isRider) {
     print("📝 [HomeScreen] Starting rider location updates and listening for ride updates...");
     PocketBaseService()
@@ -72,8 +73,8 @@ void initState() {
   }
 
 
- /*   
- This part is used for the driver's confirm button -> TO CHECK
+    
+ 
  if (isDriver) {
       _checkDriverActiveRide();
 
@@ -87,7 +88,7 @@ void initState() {
           _checkDriverActiveRide();
         }
       });
-    }*/
+    }
   }
 
 
@@ -115,25 +116,31 @@ void initState() {
   }
 
   //Used to fetch the current rider's active ride (if any)
-  void _checkDriverActiveRide() async {
-    print("📡 Checking for driver's active ride...");
+ void _checkDriverActiveRide() async {
+  print("📡 Checking for driver's active ride...");
 
-    Map<String, dynamic>? activeRide = await PocketBaseService()
-        .fetchDriverActiveRide(widget.userData["record"]["id"]);
+  Map<String, dynamic>? activeRide = await PocketBaseService()
+      .fetchDriverActiveRide(widget.userData["record"]["id"]);
 
-    if (activeRide != null) {
-      print("✅ Driver has an active ride: ${activeRide['id']}");
+  if (activeRide != null) {
+    print("✅ Driver has an active ride: ${activeRide['id']}");
 
-      if (mounted) {
-        setState(() {
-          incomingRide = activeRide; // ✅ Store the ride in memory
-          _canConfirmPickup = true; // ✅ Enable the Confirm Pickup button
-        });
-      }
-    } else {
-      print("🚫 No active ride found for driver.");
+    if (mounted) {
+      setState(() {
+        incomingRide = activeRide; // ✅ Store the ride in memory
+        _canConfirmPickup = true; // ✅ Enable the Confirm Pickup button
+      });
+    }
+  } else {
+    print("🚫 No active ride found for driver.");
+    if (mounted) {
+      setState(() {
+        incomingRide = null; // Clear the incoming ride
+        _canConfirmPickup = false; // Disable the Confirm Pickup button
+      });
     }
   }
+}
 
   /// ✅ Check if there is an active ride and store it
   void _checkOngoingRide() async {
@@ -260,6 +267,7 @@ void initState() {
 
   //✅ Launches the new ride pop-up for drivers
   void _showRideRequestPopup(Map<String, dynamic> ride) {
+    if(incomingRide!['status'] != "requested") return; //don't show if ride not requested
     showDialog(
       context: context,
       barrierDismissible: false, // Prevent closing without response
@@ -459,7 +467,7 @@ void initState() {
             ),
             const SizedBox(height: 20),
           ],
-/*
+          if(incomingRide != null) ...[
           if (isDriver && incomingRide!['status'] != "in_progress" && incomingRide!['status'] != null) ...[
             ElevatedButton(
               onPressed: _canConfirmPickup
@@ -480,7 +488,8 @@ void initState() {
                   : null, // ❌ Disabled if driver is too far
               child: const Text("Confirm Pickup"),
             ), 
-          ], */
+          ], 
+          ],
         ],
       ),
     );
